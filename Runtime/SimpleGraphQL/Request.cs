@@ -1,13 +1,11 @@
 ﻿using System;
 using System.Text;
+using System.Text.Json;
 using JetBrains.Annotations;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Serialization;
 
 namespace SimpleGraphQL
 {
     [Serializable]
-    [JsonObject(NamingStrategyType = typeof(CamelCaseNamingStrategy))]
     public class Request
     {
         public string Query { get; set; }
@@ -26,27 +24,23 @@ namespace SimpleGraphQL
     [PublicAPI]
     public static class RequestExtensions
     {
-        private static JsonSerializerSettings defaultSerializerSettings = new JsonSerializerSettings
-            { NullValueHandling = NullValueHandling.Ignore };
+        private static JsonSerializerOptions defaultSerializerSettings = new()
+            { };
 
-        public static byte[] ToBytes(this Request request, JsonSerializerSettings serializerSettings = null)
+        public static byte[] ToBytes(this Request request, JsonSerializerOptions serializerSettings = null)
         {
             return Encoding.UTF8.GetBytes(request.ToJson(false, serializerSettings));
         }
 
         public static string ToJson(this Request request, bool prettyPrint = false,
-            JsonSerializerSettings serializerSettings = null)
+            JsonSerializerOptions serializerSettings = null)
         {
             if (serializerSettings == null)
             {
                 serializerSettings = defaultSerializerSettings;
             }
 
-            return JsonConvert.SerializeObject
-            (request,
-                prettyPrint ? Formatting.Indented : Formatting.None,
-                serializerSettings
-            );
+            return JsonSerializer.Serialize(request, serializerSettings);
         }
     }
 }

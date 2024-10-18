@@ -2,11 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.Net.WebSockets;
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 using JetBrains.Annotations;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
 using UnityEngine;
 using UnityEngine.Networking;
 
@@ -54,7 +54,7 @@ namespace SimpleGraphQL
         public static async Task<string> PostRequest(
             string url,
             Request request,
-            JsonSerializerSettings serializerSettings = null,
+            JsonSerializerOptions serializerSettings = null,
             Dictionary<string, string> headers = null,
             string authToken = null,
             string authScheme = null
@@ -65,13 +65,13 @@ namespace SimpleGraphQL
             byte[] payload = request.ToBytes(serializerSettings);
 
             using (var webRequest = new UnityWebRequest(uri, "POST")
-            {
-                uploadHandler = new UploadHandlerRaw(payload),
-                downloadHandler = new DownloadHandlerBuffer(),
-                disposeCertificateHandlerOnDispose = true,
-                disposeDownloadHandlerOnDispose = true,
-                disposeUploadHandlerOnDispose = true
-            })
+                   {
+                       uploadHandler = new UploadHandlerRaw(payload),
+                       downloadHandler = new DownloadHandlerBuffer(),
+                       disposeCertificateHandlerOnDispose = true,
+                       disposeDownloadHandlerOnDispose = true,
+                       disposeUploadHandlerOnDispose = true
+                   })
             {
                 if (authToken != null)
                     webRequest.SetRequestHeader("Authorization", $"{authScheme} {authToken}");
@@ -181,16 +181,15 @@ namespace SimpleGraphQL
                 Debug.Log("Websocket is connecting");
                 await _webSocket.ConnectAsync(uri, CancellationToken.None);
 
-                string json = JsonConvert.SerializeObject(
+                string json = JsonSerializer.Serialize(
                     new
                     {
                         type = "connection_init",
-                        payload = payload
+                        payload
                     },
-                    Formatting.None,
-                    new JsonSerializerSettings
+                    new JsonSerializerOptions
                     {
-                        NullValueHandling = NullValueHandling.Ignore
+                        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
                     }
                 );
 
@@ -243,7 +242,7 @@ namespace SimpleGraphQL
                 return false;
             }
 
-            string json = JsonConvert.SerializeObject(
+            string json = JsonSerializer.Serialize(
                 new
                 {
                     id,
@@ -255,10 +254,9 @@ namespace SimpleGraphQL
                         operationName = request.OperationName
                     }
                 },
-                Formatting.None,
-                new JsonSerializerSettings
+                new JsonSerializerOptions
                 {
-                    NullValueHandling = NullValueHandling.Ignore
+                    DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
                 }
             );
 
@@ -324,76 +322,64 @@ namespace SimpleGraphQL
                 } while (!wsReceiveResult.EndOfMessage);
 
                 var jsonResult = jsonBuild.ToString();
-                if (jsonResult.IsNullOrEmpty()) return;
+                if (string.IsNullOrEmpty(jsonResult)) return;
 
-                JObject jsonObj;
-                try
-                {
-                    jsonObj = JObject.Parse(jsonResult);
-                }
-                catch (JsonReaderException e)
-                {
-                    throw new ApplicationException(e.Message);
-                }
-
-                var msgType = (string)jsonObj["type"];
-                var id = (string)jsonObj["id"];
-                switch (msgType)
+                var response = JsonSerializer.Deserialize<WebsocketResponse>(jsonResult);
+                
+                switch (response.Type)
                 {
                     case "connection_error":
-                        {
-                            throw new WebSocketException("Connection error. Error: " + jsonResult);
-                        }
+                    {
+                        throw new WebSocketException("Connection error. Error: " + jsonResult);
+                    }
                     case "connection_ack":
-                        {
-                            Debug.Log($"Websocket connection acknowledged ({id}).");
-                            continue;
-                        }
+                    {
+                        Debug.Log($"Websocket connection acknowledged ({response.Id}).");
+                        continue;
+                    }
                     case "data":
                     case "next":
+                    {
+                        if (!string.IsNullOrEmpty(response.Payload))
                         {
-                            JToken jToken = jsonObj["payload"];
+                            SubscriptionDataReceived?.Invoke(response.Payload);
 
-                            if (jToken != null)
+                            if (!string.IsNullOrEmpty(response.Id))
                             {
-                                SubscriptionDataReceived?.Invoke(jToken.ToString());
-
-                                if (id != null)
-                                {
-                                    SubscriptionDataReceivedPerChannel?[id]?.Invoke(jToken.ToString());
-                                }
+                                SubscriptionDataReceivedPerChannel?[response.Id]?.Invoke(response.Payload);
                             }
+                        }
 
-                            continue;
-                        }
+                        continue;
+                    }
                     case "error":
-                        {
-                            throw new WebSocketException("Handshake error. Error: " + jsonResult);
-                        }
+                    {
+                        throw new WebSocketException("Handshake error. Error: " + jsonResult);
+                    }
                     case "complete":
-                        {
-                            Debug.Log("Server sent complete, it's done sending data.");
-                            continue;
-                        }
+                    {
+                        Debug.Log("Server sent complete, it's done sending data.");
+                        continue;
+                    }
                     case "ka":
-                        {
-                            // stayin' alive, stayin' alive
-                            continue;
-                        }
+                    {
+                        // stayin' alive, stayin' alive
+                        continue;
+                    }
                     case "subscription_fail":
-                        {
-                            throw new WebSocketException("Subscription failed. Error: " + jsonResult);
-                        }
+                    {
+                        throw new WebSocketException("Subscription failed. Error: " + jsonResult);
+                    }
                     case "ping":
-                        {
-                            await _webSocket.SendAsync(
-                                new ArraySegment<byte>(Encoding.UTF8.GetBytes($@"{{""type"":""pong""}}")),
-                                WebSocketMessageType.Text,
-                                true,
-                                CancellationToken.None
-                            );
-                            continue;
-                        }
+                    {
+                        await _webSocket.SendAsync(
+                            new ArraySegment<byte>(Encoding.UTF8.GetBytes($@"{{""type"":""pong""}}")),
+                            WebSocketMessageType.Text,
+                            true,
+                            CancellationToken.None
+                        );
+                        continue;
+                    }
                 }
 
                 break;

@@ -1,9 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using System.Threading.Tasks;
 using JetBrains.Annotations;
-using Newtonsoft.Json;
 using UnityEngine;
 
 namespace SimpleGraphQL
@@ -58,7 +58,7 @@ namespace SimpleGraphQL
         /// <returns></returns>
         public async Task<string> Send(
             Request request,
-            JsonSerializerSettings serializerSettings = null,
+            JsonSerializerOptions serializerSettings = null,
             Dictionary<string, string> headers = null,
             string authToken = null,
             string authScheme = null
@@ -93,20 +93,20 @@ namespace SimpleGraphQL
 
         public async Task<Response<TResponse>> Send<TResponse>(
             Request request,
-            JsonSerializerSettings serializerSettings = null,
+            JsonSerializerOptions serializerSettings = null,
             Dictionary<string, string> headers = null,
             string authToken = null,
             string authScheme = null
         )
         {
             string json = await Send(request, serializerSettings, headers, authToken, authScheme);
-            return JsonConvert.DeserializeObject<Response<TResponse>>(json);
+            return JsonSerializer.Deserialize<Response<TResponse>>(json, serializerSettings);
         }
 
         public async Task<Response<TResponse>> Send<TResponse>(
             Func<TResponse> responseTypeResolver,
             Request request,
-            JsonSerializerSettings serializerSettings = null,
+            JsonSerializerOptions serializerSettings = null,
             Dictionary<string, string> headers = null,
             string authToken = null,
             string authScheme = null)

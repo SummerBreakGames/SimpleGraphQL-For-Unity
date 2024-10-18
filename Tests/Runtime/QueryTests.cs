@@ -1,10 +1,10 @@
 using System;
 using System.Collections;
 using System.Linq;
+using System.Text.Json;
 using NUnit.Framework;
 using UnityEngine.Networking;
 using UnityEngine.TestTools;
-using Newtonsoft.Json;
 
 namespace SimpleGraphQL.Tests
 {
@@ -54,7 +54,7 @@ namespace SimpleGraphQL.Tests
         // Could be part of the library?
         private Response<T> DeserializeResponse<T>(Func<T> responseTypeResolver, string json)
         {
-            return JsonConvert.DeserializeObject<Response<T>>(json);
+            return JsonSerializer.Deserialize<Response<T>>(json);
         }
 
         [UnityTest]
